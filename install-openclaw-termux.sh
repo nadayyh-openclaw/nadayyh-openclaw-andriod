@@ -308,7 +308,7 @@ start_service() {
     sleep 2
     if tmux has-session -t openclaw 2>/dev/null; then
         echo -e "${GREEN}✅ tmux 会话已建立！${NC}"
-        echo -e "请执行: ${CYAN}oclog${NC} 查看日志"
+        echo -e "请退出终端重新进入后执行: ${CYAN}oclog${NC} 查看日志"
     else
         echo -e "${RED}❌ 错误：tmux 会话启动后立即崩溃。${NC}"
         echo -e "请检查报错日志: ${YELLOW}cat $LOG_DIR/runtime.log${NC}"
@@ -442,6 +442,6 @@ apply_patches
 setup_autostart
 activate_wakelock
 start_service
-echo -e "${GREEN}脚本执行完成！${NC}，token为：$TOKEN  执行 oclog 查看运行状态； ockill 停止服务；ocr 重启服务。"
+echo -e "${GREEN}脚本执行完成！${NC}，token为：$TOKEN  。常用命令：执行 oclog 查看运行状态； ockill 停止服务；ocr 重启服务。"
 log "脚本执行完成"
 
