@@ -10,12 +10,14 @@
 #   --verbose, -v    Enable verbose output (shows command execution details)
 #   --dry-run, -d    Dry run mode (simulate execution without making changes)
 #   --uninstall, -u  Uninstall Openclaw and clean up configurations
+#   --update, -U     Force update Openclaw to latest version without prompting
 #
 # Examples:
 #   curl -sL https://s.zhihai.me/openclaw > openclaw-install.sh && bash openclaw-install.sh
 #   curl -sL https://s.zhihai.me/openclaw > openclaw-install.sh && bash openclaw-install.sh --verbose
 #   curl -sL https://s.zhihai.me/openclaw > openclaw-install.sh && bash openclaw-install.sh --dry-run
 #   curl -sL https://s.zhihai.me/openclaw > openclaw-install.sh && bash openclaw-install.sh --uninstall
+#   curl -sL https://s.zhihai.me/openclaw > openclaw-install.sh && bash openclaw-install.sh --update
 #
 # Note: For direct local execution, use: bash install-openclaw-termux.sh [options]
 #
@@ -28,6 +30,7 @@ set -o pipefail
 VERBOSE=0
 DRY_RUN=0
 UNINSTALL=0
+FORCE_UPDATE=0
 while [[ $# -gt 0 ]]; do
     case $1 in
         --verbose|-v)
@@ -42,12 +45,17 @@ while [[ $# -gt 0 ]]; do
             UNINSTALL=1
             shift
             ;;
+        --update|-U)
+            FORCE_UPDATE=1
+            shift
+            ;;
         --help|-h)
             echo "用法: $0 [选项]"
             echo "选项:"
             echo "  --verbose, -v    启用详细输出"
             echo "  --dry-run, -d    模拟运行，不执行实际命令"
             echo "  --uninstall, -u  卸载 Openclaw 和相关配置"
+            echo "  --update, -U     强制更新到最新版本"
             echo "  --help, -h       显示此帮助信息"
             exit 0
             ;;
@@ -184,11 +192,77 @@ configure_npm() {
         ln -sf "$LOG_DIR" /tmp/openclaw 2>/dev/null || true
     fi
 
+    # 检查并安装/更新 Openclaw
+    INSTALLED_VERSION=""
+    LATEST_VERSION=""
+    NEED_UPDATE=0
+
+    log "检查 Openclaw 安装状态"
     if [ -f "$NPM_BIN/openclaw" ]; then
-        log "Openclaw 已安装，跳过安装"
-        echo -e "${GREEN}✅ Openclaw 已安装，跳过安装${NC}"
+        log "Openclaw 已安装，检查版本"
+        echo -e "${BLUE}检查 Openclaw 版本...${NC}"
+        INSTALLED_VERSION=$(npm list -g openclaw --depth=0 2>/dev/null | grep -oE 'openclaw@[0-9]+\.[0-9]+\.[0-9]+' | cut -d@ -f2)
+        if [ -z "$INSTALLED_VERSION" ]; then
+            log "版本提取失败，尝试备用方法"
+            INSTALLED_VERSION=$(npm view openclaw version 2>/dev/null || echo "unknown")
+        fi
+        echo -e "${BLUE}当前版本: $INSTALLED_VERSION${NC}"
+
+        # 获取最新版本
+        log "获取最新版本信息"
+        echo -e "${BLUE}正在从 npm 获取最新版本信息...${NC}"
+        LATEST_VERSION=$(npm view openclaw version 2>/dev/null || echo "")
+
+        if [ -z "$LATEST_VERSION" ]; then
+            log "无法获取最新版本信息"
+            echo -e "${YELLOW}⚠️  无法获取最新版本信息（可能是网络问题），保持当前版本${NC}"
+        else
+            echo -e "${BLUE}最新版本: $LATEST_VERSION${NC}"
+
+            # 简单版本比较
+            if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
+                log "发现新版本: $LATEST_VERSION (当前: $INSTALLED_VERSION)"
+                echo -e "${YELLOW}🔔 发现新版本: $LATEST_VERSION (当前: $INSTALLED_VERSION)${NC}"
+
+                if [ $FORCE_UPDATE -eq 1 ]; then
+                    log "强制更新模式，直接更新"
+                    echo -e "${YELLOW}正在更新 Openclaw...${NC}"
+                    run_cmd npm i -g openclaw
+                    if [ $? -ne 0 ]; then
+                        log "Openclaw 更新失败"
+                        echo -e "${RED}错误：Openclaw 更新失败${NC}"
+                        exit 1
+                    fi
+                    log "Openclaw 更新完成"
+                    echo -e "${GREEN}✅ Openclaw 已更新到 $LATEST_VERSION${NC}"
+                else
+                    read -p "是否更新到新版本? (y/n) [默认: y]: " UPDATE_CHOICE
+                    UPDATE_CHOICE=${UPDATE_CHOICE:-y}
+
+                    if [ "$UPDATE_CHOICE" = "y" ] || [ "$UPDATE_CHOICE" = "Y" ]; then
+                        log "开始更新 Openclaw"
+                        echo -e "${YELLOW}正在更新 Openclaw...${NC}"
+                        run_cmd npm i -g openclaw
+                        if [ $? -ne 0 ]; then
+                            log "Openclaw 更新失败"
+                            echo -e "${RED}错误：Openclaw 更新失败${NC}"
+                            exit 1
+                        fi
+                        log "Openclaw 更新完成"
+                        echo -e "${GREEN}✅ Openclaw 已更新到 $LATEST_VERSION${NC}"
+                    else
+                        log "用户选择跳过更新"
+                        echo -e "${YELLOW}跳过更新，使用当前版本${NC}"
+                    fi
+                fi
+            else
+                log "版本已是最新"
+                echo -e "${GREEN}✅ Openclaw 已是最新版本 $INSTALLED_VERSION${NC}"
+            fi
+        fi
     else
         log "开始安装 Openclaw"
+        echo -e "${YELLOW}正在安装 Openclaw...${NC}"
         # 安装 Openclaw (静默安装)
         # 设置环境变量跳过 node-llama-cpp 编译（Termux 环境不支持）
         run_cmd NODE_LLAMA_CPP_SKIP_DOWNLOAD=true npm i -g openclaw
@@ -198,6 +272,11 @@ configure_npm() {
             exit 1
         fi
         log "Openclaw 安装完成"
+        INSTALLED_VERSION=$(npm list -g openclaw --depth=0 2>/dev/null | grep -oE 'openclaw@[0-9]+\.[0-9]+\.[0-9]+' | cut -d@ -f2)
+        if [ -z "$INSTALLED_VERSION" ]; then
+            INSTALLED_VERSION=$(npm view openclaw version 2>/dev/null || echo "unknown")
+        fi
+        echo -e "${GREEN}✅ Openclaw 已安装 (版本: $INSTALLED_VERSION)${NC}"
     fi
 
     BASE_DIR="$NPM_GLOBAL/lib/node_modules/openclaw"
