@@ -533,28 +533,92 @@ echo -e "${BLUE}=========================================="
 echo -e "   🦞 Openclaw Termux 部署工具"
 echo -e "==========================================${NC}"
 
-# --- 交互配置 ---
-read -p "请输入 Gateway 端口号 [默认: 18789]: " INPUT_PORT
-if [ -z "$INPUT_PORT" ]; then
-    echo -e "${GREEN}✓ 使用默认端口: 18789${NC}"
-    PORT=18789
-else
-    # 验证输入的端口号是否为数字
-    if ! [[ "$INPUT_PORT" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}错误：端口号必须是数字，使用默认值 18789${NC}"
-        PORT=18789
+# --- 检测已有配置 ---
+EXISTING_TOKEN=""
+EXISTING_PORT=""
+IS_REINSTALL=0
+
+# 检查是否已安装 Openclaw
+if [ -f "$NPM_BIN/openclaw" ] || grep -q "# --- Openclaw Start ---" "$BASHRC" 2>/dev/null; then
+    IS_REINSTALL=1
+    echo -e "${YELLOW}检测到已安装 Openclaw，正在读取现有配置...${NC}"
+
+    # 尝试从当前环境变量读取 token
+    if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
+        EXISTING_TOKEN="$OPENCLAW_GATEWAY_TOKEN"
+        log "从环境变量读取到 Token"
     else
-        PORT=$INPUT_PORT
-        echo -e "${GREEN}✓ 使用端口: $PORT${NC}"
+        # 尝试从 ~/.bashrc 读取 token
+        EXISTING_TOKEN=$(grep "export OPENCLAW_GATEWAY_TOKEN=" "$BASHRC" 2>/dev/null | sed 's/.*export OPENCLAW_GATEWAY_TOKEN=\(.*\).*/\1/')
+        if [ -n "$EXISTING_TOKEN" ]; then
+            log "从 ~/.bashrc 读取到 Token"
+        fi
+    fi
+
+    # 尝试从 ~/.bashrc 读取 port
+    EXISTING_PORT=$(grep "ocr=" "$BASHRC" 2>/dev/null | grep -oE '--port [0-9]+' | grep -oE '[0-9]+' | head -1)
+    if [ -z "$EXISTING_PORT" ]; then
+        EXISTING_PORT=$(grep "export OPENCLAW_GATEWAY_TOKEN=" "$BASHRC" 2>/dev/null | grep -oE '--port [0-9]+' | grep -oE '[0-9]+' | head -1)
+    fi
+    if [ -n "$EXISTING_PORT" ]; then
+        log "从 ~/.bashrc 读取到 Port: $EXISTING_PORT"
     fi
 fi
 
-read -p "请输入自定义 Token (用于安全访问，建议强密码) [留空随机生成]: " TOKEN
-if [ -z "$TOKEN" ]; then
-    # 生成随机 Token
-    RANDOM_PART=$(date +%s | md5sum | cut -c 1-8)
-    TOKEN="token$RANDOM_PART"
-    echo -e "${GREEN}生成的随机 Token: $TOKEN${NC}"
+# --- 交互配置 ---
+if [ $IS_REINSTALL -eq 1 ] && [ -n "$EXISTING_TOKEN" ]; then
+    echo -e "${BLUE}检测到现有配置：${NC}"
+    echo -e "  Token: ${YELLOW}${EXISTING_TOKEN:0:10}...${NC}"
+    if [ -n "$EXISTING_PORT" ]; then
+        echo -e "  Port:  ${YELLOW}${EXISTING_PORT}${NC}"
+    fi
+    echo ""
+    read -p "是否使用现有配置? (y/n) [默认: y]: " USE_EXISTING
+    USE_EXISTING=${USE_EXISTING:-y}
+
+    if [ "$USE_EXISTING" = "y" ] || [ "$USE_EXISTING" = "Y" ]; then
+        TOKEN="$EXISTING_TOKEN"
+        if [ -n "$EXISTING_PORT" ]; then
+            PORT="$EXISTING_PORT"
+        fi
+        echo -e "${GREEN}✓ 使用现有配置${NC}"
+    fi
+fi
+
+# 如果没有使用现有配置，则询问新配置
+if [ "$TOKEN" = "" ]; then
+    # 配置端口
+    if [ "$PORT" = "" ]; then
+        DEFAULT_PORT=18789
+        if [ -n "$EXISTING_PORT" ]; then
+            DEFAULT_PORT=$EXISTING_PORT
+        fi
+        read -p "请输入 Gateway 端口号 [默认: $DEFAULT_PORT]: " INPUT_PORT
+        if [ -z "$INPUT_PORT" ]; then
+            echo -e "${GREEN}✓ 使用默认端口: $DEFAULT_PORT${NC}"
+            PORT=$DEFAULT_PORT
+        else
+            # 验证输入的端口号是否为数字
+            if ! [[ "$INPUT_PORT" =~ ^[0-9]+$ ]]; then
+                echo -e "${RED}错误：端口号必须是数字，使用默认值 $DEFAULT_PORT${NC}"
+                PORT=$DEFAULT_PORT
+            else
+                PORT=$INPUT_PORT
+                echo -e "${GREEN}✓ 使用端口: $PORT${NC}"
+            fi
+        fi
+    fi
+
+    # 配置 Token
+    read -p "请输入自定义 Token (用于安全访问，建议强密码) [留空随机生成]: " INPUT_TOKEN
+    if [ -z "$INPUT_TOKEN" ]; then
+        # 生成随机 Token
+        RANDOM_PART=$(date +%s | md5sum | cut -c 1-8)
+        TOKEN="token$RANDOM_PART"
+        echo -e "${GREEN}生成的随机 Token: $TOKEN${NC}"
+    else
+        TOKEN="$INPUT_TOKEN"
+    fi
 fi
 
 read -p "是否需要开启开机自启动? (y/n) [默认: y]: " AUTO_START
