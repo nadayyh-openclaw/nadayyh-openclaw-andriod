@@ -1,5 +1,8 @@
 # Openclaw Termux 원클릭 배포 스크립트
 
+<img width="1080" height="1920" alt="image" src="https://github.com/user-attachments/assets/d035b4ee-0aea-41b2-bdc4-7afd30266f17" />
+
+
 > 🦞 안드로이드 Termux 환경에서 클릭 한 번으로 Openclaw를 배포하여, 모바일 기기에서도 손쉽게 AI 게이트웨이 서비스를 운영할 수 있습니다.
 
 ## 📖 목차
